@@ -1,41 +1,30 @@
 import { NextResponse } from "next/server"
+import { Keypair } from "@solana/web3.js"
+import { encode } from "bs58"
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
-    const { network } = await request.json()
+    // Generate a new Solana keypair
+    const keypair = Keypair.generate()
 
-    // Mock wallet generation - in production, use @solana/web3.js
-    const mockWallet = {
-      publicKey: generateMockPublicKey(),
-      privateKey: generateMockPrivateKey(),
-      network,
-      balance: 0,
-      created: new Date().toISOString(),
-    }
+    // Get the public and private keys
+    const publicKey = keypair.publicKey.toString()
+    const privateKey = encode(keypair.secretKey)
 
     return NextResponse.json({
       success: true,
-      wallet: mockWallet,
+      publicKey,
+      privateKey,
     })
   } catch (error) {
-    return NextResponse.json({ success: false, error: "Failed to generate wallet" }, { status: 500 })
+    console.error("Failed to generate wallet:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to generate wallet",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
-}
-
-function generateMockPublicKey(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-  let result = ""
-  for (let i = 0; i < 44; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return result
-}
-
-function generateMockPrivateKey(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-  let result = ""
-  for (let i = 0; i < 88; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return result
 }

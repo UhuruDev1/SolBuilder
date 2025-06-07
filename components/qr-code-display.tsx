@@ -24,7 +24,7 @@ export function QRCodeDisplay({ qrCode, publicKey }: QRCodeDisplayProps) {
 
   const downloadQR = () => {
     const link = document.createElement("a")
-    link.download = `wallet-qr-${publicKey.substring(0, 8)}.svg`
+    link.download = `wallet-qr-${publicKey.substring(0, 8)}.png`
     link.href = qrCode
     link.click()
 

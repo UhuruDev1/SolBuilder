@@ -1,15 +1,19 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useMemo } from "react"
+import { createContext, useContext, useState, useEffect, useMemo } from "react"
 import { ConnectionProvider, WalletProvider, useWallet as useSolanaWallet } from "@solana/wallet-adapter-react"
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base"
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui"
-import { SolflareWalletAdapter, TorusWalletAdapter, LedgerWalletAdapter } from "@solana/wallet-adapter-wallets"
-import { clusterApiUrl, Connection } from "@solana/web3.js"
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+  TorusWalletAdapter,
+  LedgerWalletAdapter,
+} from "@solana/wallet-adapter-wallets"
+import { clusterApiUrl, Connection, type PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js"
 import { useToast } from "@/hooks/use-toast"
-// Update the imports to ensure we're using the correct Phantom adapter
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom"
+import QRCode from "qrcode"
 
 // Import wallet adapter CSS
 import "@solana/wallet-adapter-react-ui/styles.css"
@@ -23,6 +27,7 @@ interface WalletContextType {
   createOnSiteWallet: () => Promise<{ publicKey: string; qrCode: string }>
   network: WalletAdapterNetwork
   setNetwork: (network: WalletAdapterNetwork) => void
+  refreshBalance: () => Promise<void>
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined)
@@ -36,47 +41,78 @@ function WalletConnectionProviderInner({
   children,
   network = WalletAdapterNetwork.Devnet,
 }: WalletConnectionProviderProps) {
-  const { connected, publicKey, connect, disconnect } = useSolanaWallet()
+  const { connected, publicKey, connect: connectWallet, disconnect: disconnectWallet } = useSolanaWallet()
+  const [balance, setBalance] = useState<number>(0)
   const { toast } = useToast()
+  const connection = useMemo(() => new Connection(clusterApiUrl(network)), [network])
+
+  // Fetch balance when wallet is connected
+  useEffect(() => {
+    if (connected && publicKey) {
+      fetchBalance(publicKey)
+    } else {
+      setBalance(0)
+    }
+  }, [connected, publicKey, network])
+
+  const fetchBalance = async (pubKey: PublicKey) => {
+    try {
+      const balanceInLamports = await connection.getBalance(pubKey)
+      setBalance(balanceInLamports / LAMPORTS_PER_SOL)
+    } catch (error) {
+      console.error("Failed to fetch balance:", error)
+      setBalance(0)
+    }
+  }
+
+  const refreshBalance = async () => {
+    if (connected && publicKey) {
+      await fetchBalance(publicKey)
+      toast({
+        title: "Balance Updated",
+        description: "Your wallet balance has been refreshed",
+      })
+    }
+  }
 
   const createOnSiteWallet = async () => {
-    const publicKey = generateMockPublicKey()
-    const qrCode = `data:image/svg+xml;base64,${btoa(generateQRCodeSVG(publicKey))}`
-    return { publicKey, qrCode }
-  }
-
-  const generateMockPublicKey = () => {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    let result = ""
-    for (let i = 0; i < 44; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return result
-  }
-
-  const generateQRCodeSVG = (data: string) => {
-    return `<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
-      <rect width="200" height="200" fill="white"/>
-      <text x="100" y="100" textAnchor="middle" fontSize="12" fill="black">QR Code for: ${data.substring(0, 8)}...</text>
-    </svg>`
-  }
-
-  // In the WalletConnectionProviderInner component, update the handleConnect function:
-  const handleConnect = async () => {
     try {
-      await connect()
+      // Generate a new keypair
+      const response = await fetch("/api/wallet/generate", {
+        method: "POST",
+      })
 
-      // Check if we're connected to a real wallet
-      if (publicKey) {
-        // Fetch the actual balance from the network
-        const connection = new Connection(clusterApiUrl(network))
-        const balance = await connection.getBalance(publicKey)
-
-        toast({
-          title: "Wallet Connected",
-          description: `Successfully connected to ${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)}`,
-        })
+      if (!response.ok) {
+        throw new Error("Failed to generate wallet")
       }
+
+      const { publicKey, privateKey } = await response.json()
+
+      // Generate QR code for the public key
+      const qrCode = await QRCode.toDataURL(`solana:${publicKey}?transfer=`)
+
+      // Store private key securely (in this case, just returning it)
+      // In a real app, you'd want to encrypt this or use a more secure approach
+
+      return { publicKey, qrCode, privateKey }
+    } catch (error) {
+      console.error("Error creating wallet:", error)
+      toast({
+        title: "Wallet Creation Failed",
+        description: "Could not create a new wallet",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const connect = async () => {
+    try {
+      await connectWallet()
+      toast({
+        title: "Wallet Connected",
+        description: "Successfully connected to your wallet",
+      })
     } catch (error) {
       console.error("Connection error:", error)
       toast({
@@ -87,8 +123,8 @@ function WalletConnectionProviderInner({
     }
   }
 
-  const handleDisconnect = () => {
-    disconnect()
+  const disconnect = () => {
+    disconnectWallet()
     toast({
       title: "Wallet Disconnected",
       description: "Your wallet has been disconnected",
@@ -100,12 +136,13 @@ function WalletConnectionProviderInner({
       value={{
         connected,
         publicKey: publicKey?.toString() || null,
-        balance: 0, // TODO: Implement real balance fetching
-        connect: handleConnect,
-        disconnect: handleDisconnect,
+        balance,
+        connect,
+        disconnect,
         createOnSiteWallet,
         network,
         setNetwork: () => {}, // TODO: Implement network switching
+        refreshBalance,
       }}
     >
       {children}
@@ -120,11 +157,10 @@ export function WalletConnectionProvider({
   // The network can be set to 'devnet', 'testnet', or 'mainnet-beta'
   const endpoint = useMemo(() => clusterApiUrl(network), [network])
 
-  // In the WalletConnectionProvider function, update the wallets array to prioritize Phantom
-  // Replace the existing wallets array with this:
+  // Configure wallet adapters
   const wallets = useMemo(
     () => [
-      new PhantomWalletAdapter({ network }),
+      new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
       new TorusWalletAdapter(),
       new LedgerWalletAdapter(),

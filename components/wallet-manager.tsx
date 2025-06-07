@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,8 @@ import { QRCodeDisplay } from "@/components/qr-code-display"
 import { useWallet } from "@/components/wallet-connection-provider"
 import { Wallet, Plus, QrCode, Copy, Shield, Zap, RefreshCw, Send } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Connection, PublicKey, LAMPORTS_PER_SOL, clusterApiUrl } from "@solana/web3.js"
+import type { WalletAdapterNetwork } from "@solana/wallet-adapter-base"
 
 interface WalletManagerProps {
   network: "devnet" | "testnet" | "mainnet"
@@ -20,26 +22,48 @@ interface WalletManagerProps {
 interface OnSiteWallet {
   id: string
   publicKey: string
+  privateKey?: string
   balance: number
   qrCode: string
   created: string
 }
 
 export function WalletManager({ network }: WalletManagerProps) {
-  const { connected, publicKey, balance, connect, disconnect, createOnSiteWallet } = useWallet()
+  const { connected, publicKey, balance, connect, disconnect, createOnSiteWallet, refreshBalance } = useWallet()
   const [onSiteWallets, setOnSiteWallets] = useState<OnSiteWallet[]>([])
   const [isCreatingWallet, setIsCreatingWallet] = useState(false)
   const [selectedWallet, setSelectedWallet] = useState<OnSiteWallet | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const { toast } = useToast()
+
+  // Load saved wallets from localStorage on component mount
+  useEffect(() => {
+    const savedWallets = localStorage.getItem("onSiteWallets")
+    if (savedWallets) {
+      try {
+        setOnSiteWallets(JSON.parse(savedWallets))
+      } catch (e) {
+        console.error("Failed to parse saved wallets", e)
+      }
+    }
+  }, [])
+
+  // Save wallets to localStorage when they change
+  useEffect(() => {
+    if (onSiteWallets.length > 0) {
+      localStorage.setItem("onSiteWallets", JSON.stringify(onSiteWallets))
+    }
+  }, [onSiteWallets])
 
   const handleCreateOnSiteWallet = async () => {
     setIsCreatingWallet(true)
     try {
-      const { publicKey, qrCode } = await createOnSiteWallet()
+      const { publicKey, qrCode, privateKey } = await createOnSiteWallet()
 
       const newWallet: OnSiteWallet = {
         id: `wallet-${Date.now()}`,
         publicKey,
+        privateKey,
         balance: 0,
         qrCode,
         created: new Date().toISOString(),
@@ -81,14 +105,85 @@ export function WalletManager({ network }: WalletManagerProps) {
       return
     }
 
-    setOnSiteWallets((prev) =>
-      prev.map((wallet) => (wallet.id === walletId ? { ...wallet, balance: wallet.balance + 2 } : wallet)),
-    )
+    const wallet = onSiteWallets.find((w) => w.id === walletId)
+    if (!wallet) return
 
-    toast({
-      title: "Airdrop Successful",
-      description: "Received 2 SOL from faucet",
-    })
+    try {
+      const connection = new Connection(clusterApiUrl(network as WalletAdapterNetwork))
+      const publicKey = new PublicKey(wallet.publicKey)
+
+      toast({
+        title: "Requesting Airdrop",
+        description: "Requesting SOL from faucet...",
+      })
+
+      const signature = await connection.requestAirdrop(publicKey, 2 * LAMPORTS_PER_SOL)
+      await connection.confirmTransaction(signature)
+
+      // Update the wallet balance
+      const balance = await connection.getBalance(publicKey)
+
+      setOnSiteWallets((prev) =>
+        prev.map((w) => (w.id === walletId ? { ...w, balance: balance / LAMPORTS_PER_SOL } : w)),
+      )
+
+      if (selectedWallet?.id === walletId) {
+        setSelectedWallet({
+          ...selectedWallet,
+          balance: balance / LAMPORTS_PER_SOL,
+        })
+      }
+
+      toast({
+        title: "Airdrop Successful",
+        description: "Received 2 SOL from faucet",
+      })
+    } catch (error) {
+      console.error("Airdrop failed:", error)
+      toast({
+        title: "Airdrop Failed",
+        description: "Failed to request SOL from faucet",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleRefreshBalance = async () => {
+    setIsRefreshing(true)
+    try {
+      await refreshBalance()
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const refreshOnSiteWalletBalance = async (walletId: string) => {
+    const wallet = onSiteWallets.find((w) => w.id === walletId)
+    if (!wallet) return
+
+    try {
+      const connection = new Connection(clusterApiUrl(network as WalletAdapterNetwork))
+      const publicKey = new PublicKey(wallet.publicKey)
+      const balance = await connection.getBalance(publicKey)
+
+      setOnSiteWallets((prev) =>
+        prev.map((w) => (w.id === walletId ? { ...w, balance: balance / LAMPORTS_PER_SOL } : w)),
+      )
+
+      if (selectedWallet?.id === walletId) {
+        setSelectedWallet({
+          ...selectedWallet,
+          balance: balance / LAMPORTS_PER_SOL,
+        })
+      }
+
+      toast({
+        title: "Balance Updated",
+        description: "Wallet balance has been refreshed",
+      })
+    } catch (error) {
+      console.error("Failed to refresh balance:", error)
+    }
   }
 
   return (
@@ -138,8 +233,8 @@ export function WalletManager({ network }: WalletManagerProps) {
                       <span className="text-2xl font-bold">{balance.toFixed(4)}</span>
                       <span className="text-sm text-gray-600 ml-2">SOL</span>
                     </div>
-                    <Button size="sm" variant="outline">
-                      <RefreshCw className="h-4 w-4" />
+                    <Button size="sm" variant="outline" onClick={handleRefreshBalance} disabled={isRefreshing}>
+                      <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
                     </Button>
                   </div>
                 </div>
@@ -212,7 +307,8 @@ export function WalletManager({ network }: WalletManagerProps) {
                           <div className="flex items-center space-x-2 mb-2">
                             <QrCode className="h-4 w-4 text-blue-500" />
                             <span className="font-medium text-sm">
-                              {wallet.publicKey.substring(0, 8)}...{wallet.publicKey.substring(-8)}
+                              {wallet.publicKey.substring(0, 8)}...
+                              {wallet.publicKey.substring(wallet.publicKey.length - 8)}
                             </span>
                             <Badge variant="outline" className="text-xs">
                               {wallet.balance.toFixed(2)} SOL
@@ -273,6 +369,13 @@ export function WalletManager({ network }: WalletManagerProps) {
                                   <span className="text-xl font-bold">{selectedWallet.balance.toFixed(4)}</span>
                                   <span className="text-sm text-gray-600 ml-2">SOL</span>
                                 </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => refreshOnSiteWalletBalance(selectedWallet.id)}
+                                >
+                                  <RefreshCw className="h-4 w-4" />
+                                </Button>
                               </div>
                             </div>
 

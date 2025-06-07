@@ -4,7 +4,7 @@ import type React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { Wallet, DollarSign, Send, Hash, Clock, Database, ArrowRight, Zap } from "lucide-react"
+import { Wallet, DollarSign, Send, Hash, Clock, Database, ArrowRight, Zap, ArrowUpDown, Brain } from "lucide-react"
 
 const nodeCategories = [
   {
@@ -50,6 +50,26 @@ const nodeCategories = [
       { type: "oracleCheck", label: "Oracle", icon: Database, color: "bg-indigo-500", description: "Price feed check" },
     ],
   },
+  {
+    id: "advanced",
+    title: "Advanced",
+    nodes: [
+      {
+        type: "arbitrage",
+        label: "Arbitrage",
+        icon: ArrowUpDown,
+        color: "bg-purple-600",
+        description: "Multi-platform arbitrage scanner",
+      },
+      {
+        type: "walletTracer",
+        label: "Wallet Tracer",
+        icon: Brain,
+        color: "bg-pink-600",
+        description: "AI wallet pattern analysis",
+      },
+    ],
+  },
 ]
 
 interface NodePaletteProps {
@@ -81,10 +101,13 @@ export function NodePalette({ onAddNode }: NodePaletteProps) {
       </CardHeader>
       <CardContent className="p-4">
         <Tabs defaultValue="wallet" className="space-y-4">
-          <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="wallet">Wallet</TabsTrigger>
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="wallet">Basic</TabsTrigger>
             <TabsTrigger value="transaction">TX</TabsTrigger>
+          </TabsList>
+          <TabsList className="grid grid-cols-2 w-full">
             <TabsTrigger value="logic">Logic</TabsTrigger>
+            <TabsTrigger value="advanced">Advanced</TabsTrigger>
           </TabsList>
 
           {nodeCategories.map((category) => (
