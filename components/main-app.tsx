@@ -15,6 +15,7 @@ import { WalletAdapterNetwork } from "@solana/wallet-adapter-base"
 import { useWalletModal } from "@solana/wallet-adapter-react-ui"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { Layers, Wallet, Code, Users, Settings, Menu, X, Zap, BrainCircuit } from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
 
 export function MainApp() {
   const [activeTab, setActiveTab] = useState("playground")
@@ -61,7 +62,16 @@ function MainAppContent({
   const { setVisible } = useWalletModal()
 
   const handleWalletClick = () => {
-    setVisible(true)
+    if (connected) {
+      // If already connected, show wallet info
+      toast({
+        title: "Wallet Connected",
+        description: `Connected to ${publicKey?.toString().slice(0, 4)}...${publicKey?.toString().slice(-4)}`,
+      })
+    } else {
+      // If not connected, open wallet modal
+      setVisible(true)
+    }
   }
 
   const networkMapping = {

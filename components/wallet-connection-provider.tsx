@@ -5,14 +5,11 @@ import { createContext, useContext, useMemo } from "react"
 import { ConnectionProvider, WalletProvider, useWallet as useSolanaWallet } from "@solana/wallet-adapter-react"
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base"
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui"
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-  TorusWalletAdapter,
-  LedgerWalletAdapter,
-} from "@solana/wallet-adapter-wallets"
-import { clusterApiUrl } from "@solana/web3.js"
+import { SolflareWalletAdapter, TorusWalletAdapter, LedgerWalletAdapter } from "@solana/wallet-adapter-wallets"
+import { clusterApiUrl, Connection } from "@solana/web3.js"
 import { useToast } from "@/hooks/use-toast"
+// Update the imports to ensure we're using the correct Phantom adapter
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom"
 
 // Import wallet adapter CSS
 import "@solana/wallet-adapter-react-ui/styles.css"
@@ -64,17 +61,27 @@ function WalletConnectionProviderInner({
     </svg>`
   }
 
+  // In the WalletConnectionProviderInner component, update the handleConnect function:
   const handleConnect = async () => {
     try {
       await connect()
-      toast({
-        title: "Wallet Connected",
-        description: "Successfully connected to your wallet",
-      })
+
+      // Check if we're connected to a real wallet
+      if (publicKey) {
+        // Fetch the actual balance from the network
+        const connection = new Connection(clusterApiUrl(network))
+        const balance = await connection.getBalance(publicKey)
+
+        toast({
+          title: "Wallet Connected",
+          description: `Successfully connected to ${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)}`,
+        })
+      }
     } catch (error) {
+      console.error("Connection error:", error)
       toast({
         title: "Connection Failed",
-        description: "Failed to connect wallet",
+        description: "Failed to connect wallet. Make sure Phantom is installed.",
         variant: "destructive",
       })
     }
@@ -113,10 +120,11 @@ export function WalletConnectionProvider({
   // The network can be set to 'devnet', 'testnet', or 'mainnet-beta'
   const endpoint = useMemo(() => clusterApiUrl(network), [network])
 
-  // Only include currently supported wallet adapters
+  // In the WalletConnectionProvider function, update the wallets array to prioritize Phantom
+  // Replace the existing wallets array with this:
   const wallets = useMemo(
     () => [
-      new PhantomWalletAdapter(),
+      new PhantomWalletAdapter({ network }),
       new SolflareWalletAdapter(),
       new TorusWalletAdapter(),
       new LedgerWalletAdapter(),
