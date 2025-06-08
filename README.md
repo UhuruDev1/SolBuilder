@@ -1,5 +1,3 @@
-Here’s your **revamped, exciting GitHub README** with badges, emojis, and **no references to v0.dev**:
-
 ---
 
 # 🚀 Solana AI Builder
@@ -53,7 +51,7 @@ Here’s your **revamped, exciting GitHub README** with badges, emojis, and **no
 
 ## 🤝 Join the Movement
 
-* 🗣️ **[Join the Community Forum](#)** *(Coming soon)*
+* 🗣️ **[Join the Community Forum](#)** *Launching soon*
 * 💬 **[Live Chat Support](#)**
 * 🧠 **[Docs & Tutorials](#)**
 
